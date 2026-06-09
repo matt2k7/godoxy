@@ -1,0 +1,83 @@
+name: Build ARM64 Binary
+
+# Triggers:
+#  - manually via Actions tab (workflow_dispatch)
+#  - automatically when a tag is pushed (e.g. after sync-upstream runs)
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write   # required to create GitHub Releases
+
+jobs:
+  build:
+    name: Build godoxy for linux/arm64
+    runs-on: ubuntu-24.04-arm   # native ARM64 runner — no QEMU, no cross-compilation
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history so 'git describe --tags' works for VERSION
+          submodules: recursive
+      # Makefile reads go.mod directly for the Go version requirement
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # Required by: make build → ensure-webui-dist → build-webui → bun install + vite
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Build
+        run: |
+          # SETCAP_CMD=true: makes the post-build setcap a no-op.
+          # The 'true' command ignores all arguments and exits 0, so the
+          # Makefile's "$(SETCAP_CMD) CAP_NET_BIND_SERVICE=+ep bin/godoxy"
+          # line becomes harmless. setcap is run manually on the device
+          # after downloading the binary (see release notes below).
+          make build SETCAP_CMD=true
+
+      - name: Rename binary
+        run: mv bin/godoxy bin/godoxy-linux-arm64
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: godoxy-linux-arm64
+          path: bin/godoxy-linux-arm64
+          retention-days: 30
+
+      # Only runs on tag pushes — workflow_dispatch builds are artifact-only
+      - name: Create Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: bin/godoxy-linux-arm64
+          generate_release_notes: false
+          body: |
+            ARM64 build of GoDoxy ${{ github.ref_name }} for NanoPi NEO2 and compatible arm64 devices.
+
+            **First install:**
+            ```bash
+            sudo wget -qO /usr/local/bin/godoxy \
+              https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/godoxy-linux-arm64
+            sudo chmod +x /usr/local/bin/godoxy
+            sudo setcap CAP_NET_BIND_SERVICE=+ep /usr/local/bin/godoxy
+            sudo systemctl start godoxy
+            ```
+
+            **Update existing install:**
+            ```bash
+            systemctl stop godoxy && \
+            wget -qO /usr/local/bin/godoxy \
+              https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/godoxy-linux-arm64 && \
+            chmod +x /usr/local/bin/godoxy && \
+            setcap CAP_NET_BIND_SERVICE=+ep /usr/local/bin/godoxy && \
+            systemctl start godoxy
+            ```
