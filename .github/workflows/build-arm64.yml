@@ -22,14 +22,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          submodules: false   # we'll handle webui ourselves below
+          submodules: recursive
 
       - name: Use forked WebUI
         run: |
-          git submodule update --init --recursive --exclude webui
           rm -rf webui
           git clone --depth=1 \
-            https://github.com/${{ github.repository_owner }}/godoxy-webui.git \
+            https://github.com/matt2k7/godoxy-webui.git \
             webui
           cd webui && git submodule update --init --recursive
           
