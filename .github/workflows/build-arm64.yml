@@ -21,8 +21,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0   # full history so 'git describe --tags' works for VERSION
-          submodules: recursive
+          fetch-depth: 0
+          submodules: false   # we'll handle webui ourselves below
+
+      - name: Use forked WebUI
+        run: |
+          git submodule update --init --recursive --exclude webui
+          rm -rf webui
+          git clone --depth=1 \
+            https://github.com/${{ github.repository_owner }}/godoxy-webui.git \
+            webui
+          cd webui && git submodule update --init --recursive
+          
       # Makefile reads go.mod directly for the Go version requirement
       - name: Setup Go
         uses: actions/setup-go@v5
